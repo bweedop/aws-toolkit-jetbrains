@@ -446,7 +446,8 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
             referenceTrackerInfo,
             eventId,
             codeBlockIndex,
-            totalCodeBlocks
+            totalCodeBlocks,
+            userIntent
         ) => {
             connector.onCopyCodeToClipboard(
                 tabId,
@@ -456,7 +457,8 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
                 referenceTrackerInfo,
                 eventId,
                 codeBlockIndex,
-                totalCodeBlocks
+                totalCodeBlocks,
+                userIntent
             )
             mynahUI.notify({
                 type: NotificationType.SUCCESS,

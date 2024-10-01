@@ -230,7 +230,8 @@ export class Connector {
         codeReference?: CodeReference[],
         eventId?: string,
         codeBlockIndex?: number,
-        totalCodeBlocks?: number
+        totalCodeBlocks?: number,
+        userIntent?: string
     ): void => {
         switch (this.tabsStorage.getTab(tabID)?.type) {
             case 'cwc':
@@ -242,7 +243,8 @@ export class Connector {
                     codeReference,
                     eventId,
                     codeBlockIndex,
-                    totalCodeBlocks
+                    totalCodeBlocks,
+                    userIntent
                 )
                 break
             case 'featuredev':
@@ -259,7 +261,8 @@ export class Connector {
         codeReference?: CodeReference[],
         eventId?: string,
         codeBlockIndex?: number,
-        totalCodeBlocks?: number
+        totalCodeBlocks?: number,
+        userIntent?: string,
     ): void => {
         switch (this.tabsStorage.getTab(tabID)?.type) {
             case 'cwc':
@@ -271,7 +274,8 @@ export class Connector {
                     codeReference,
                     eventId,
                     codeBlockIndex,
-                    totalCodeBlocks
+                    totalCodeBlocks,
+                    userIntent
                 )
                 break
             case 'featuredev':
