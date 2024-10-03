@@ -89,6 +89,10 @@ interface ToolkitStartupAuthFactory {
 }
 
 interface ToolkitConnectionManager : Disposable {
+    @Deprecated(
+        "Fragile API. Probably leads to unexpected behavior. Use only for toolkit explorer dropdown state.",
+        ReplaceWith("activeConnectionForFeature(feature)")
+    )
     fun activeConnection(): ToolkitConnection?
 
     fun activeConnectionForFeature(feature: FeatureWithPinnedConnection): ToolkitConnection?
@@ -121,7 +125,6 @@ fun loginSso(
     onSuccess: () -> Unit = {},
     metadata: ConnectionMetadata? = null
 ): AwsBearerTokenConnection? {
-    val source = metadata
     fun createAndAuthNewConnection(profile: AuthProfile): AwsBearerTokenConnection? {
         val authManager = ToolkitAuthManager.getInstance()
         val connection = try {
@@ -130,6 +133,8 @@ fun loginSso(
                     project = project,
                     connection = transientConnection,
                     onPendingToken = onPendingToken,
+                    isReAuth = false,
+                    source = metadata?.sourceId,
                 )
             }
         } catch (e: Exception) {
@@ -149,7 +154,7 @@ fun loginSso(
 
     val manager = ToolkitAuthManager.getInstance()
     val allScopes = requestedScopes.toMutableSet()
-    return manager.getConnection(connectionId)?.let { connection ->
+    val connection = manager.getConnection(connectionId)?.let { connection ->
         val logger = getLogger<ToolkitAuthManager>()
 
         if (connection !is AwsBearerTokenConnection) {
@@ -167,32 +172,32 @@ fun loginSso(
                 """.trimIndent()
             }
             // can't reuse since requested scopes are not in current connection. forcing reauth
-            return createAndAuthNewConnection(
-                ManagedSsoProfile(
-                    region,
-                    startUrl,
-                    allScopes.toList()
-                )
-            )
+            return@let null
         }
 
         // For the case when the existing connection is in invalid state, we need to re-auth
         reauthConnectionIfNeeded(
             project = project,
             connection = connection,
-            isReAuth = true
+            onPendingToken = onPendingToken,
+            isReAuth = true,
+            source = metadata?.sourceId,
         )
-        return connection
-    } ?: run {
-        // No existing connection, start from scratch
-        createAndAuthNewConnection(
-            ManagedSsoProfile(
-                region,
-                startUrl,
-                allScopes.toList()
-            )
-        )
+        return@let connection
     }
+
+    if (connection != null) {
+        return connection
+    }
+
+    // No existing connection, start from scratch
+    return createAndAuthNewConnection(
+        ManagedSsoProfile(
+            region,
+            startUrl,
+            allScopes.toList()
+        )
+    )
 }
 
 @Suppress("UnusedParameter")
@@ -233,7 +238,8 @@ fun reauthConnectionIfNeeded(
     project: Project?,
     connection: ToolkitConnection,
     onPendingToken: (InteractiveBearerTokenProvider) -> Unit = {},
-    isReAuth: Boolean = false
+    isReAuth: Boolean = false,
+    source: String? = null,
 ): BearerTokenProvider {
     val tokenProvider = (connection.getConnectionSettings() as TokenConnectionSettings).tokenProvider.delegate as BearerTokenProvider
     if (tokenProvider is InteractiveBearerTokenProvider) {
@@ -241,7 +247,9 @@ fun reauthConnectionIfNeeded(
     }
 
     val startUrl = (connection as AwsBearerTokenConnection).startUrl
+    var didReauth = false
     maybeReauthProviderIfNeeded(project, tokenProvider) {
+        didReauth = true
         runUnderProgressIfNeeded(project, AwsCoreBundle.message("credentials.pending.title"), true) {
             try {
                 tokenProvider.reauthenticate()
@@ -250,12 +258,14 @@ fun reauthConnectionIfNeeded(
                         credentialStartUrl = startUrl,
                         credentialSourceId = getCredentialIdForTelemetry(connection),
                         isReAuth = true,
-                        result = Result.Succeeded
+                        result = Result.Succeeded,
+                        source = source,
                     )
                     recordAddConnection(
                         credentialSourceId = getCredentialIdForTelemetry(connection),
                         isReAuth = true,
-                        result = Result.Succeeded
+                        result = Result.Succeeded,
+                        source = source,
                     )
                 }
             } catch (e: Exception) {
@@ -265,18 +275,25 @@ fun reauthConnectionIfNeeded(
                         credentialStartUrl = startUrl,
                         credentialSourceId = getCredentialIdForTelemetry(connection),
                         isReAuth = true,
-                        result = result
+                        result = result,
+                        source = source,
                     )
                     recordAddConnection(
                         credentialSourceId = getCredentialIdForTelemetry(connection),
                         isReAuth = true,
-                        result = result
+                        result = result,
+                        source = source,
                     )
                 }
 
                 throw e
             }
         }
+    }
+
+    if (!didReauth) {
+        // webview is stuck if reauth was not needed (i.e. token on disk is valid)
+        project?.let { ToolkitConnectionManager.getInstance(it).switchConnection(connection) }
     }
     return tokenProvider
 }
