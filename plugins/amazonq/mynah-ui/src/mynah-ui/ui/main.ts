@@ -2,7 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
-import { Connector } from './connector'
+import {Connector, TracedChatItem} from './connector'
 import { ChatItem, ChatItemType, MynahIcons, MynahUI, MynahUIDataModel, NotificationType } from '@aws/mynah-ui-chat'
 import './styles/dark.scss'
 import { TabsStorage, TabType } from './storages/tabsStorage'
@@ -23,6 +23,8 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
     let mynahUI: MynahUI
     // eslint-disable-next-line prefer-const
     let connector: Connector
+    const messageUserIntentMap = new Map<string, string>()
+
     const tabsStorage = new TabsStorage({
         onTabTimeout: tabID => {
             mynahUI.addChatItem(tabID, {
@@ -239,7 +241,7 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
         sendMessageToExtension: message => {
             ideApi.postMessage(message)
         },
-        onChatAnswerReceived: (tabID: string, item: ChatItem) => {
+        onChatAnswerReceived: (tabID: string, item: TracedChatItem) => {
             if (item.type === ChatItemType.ANSWER_PART || item.type === ChatItemType.CODE_RESULT) {
                 mynahUI.updateLastChatAnswer(tabID, {
                     ...(item.messageId !== undefined ? { messageId: item.messageId } : {}),
@@ -251,6 +253,9 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
                         ? { type: ChatItemType.CODE_RESULT, fileList: item.fileList }
                         : {}),
                 })
+                if (item.messageId !== undefined && item.userIntent !== undefined) {
+                    messageUserIntentMap.set(item.messageId, item.userIntent)
+                }
                 return
             }
 
@@ -437,7 +442,28 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
                 content: 'Thanks for your feedback.',
             })
         },
-        onCodeInsertToCursorPosition: connector.onCodeInsertToCursorPosition,
+        onCodeInsertToCursorPosition: (
+            tabId,
+            messageId,
+            code,
+            type,
+            referenceTrackerInfo,
+            eventId,
+            codeBlockIndex,
+            totalCodeBlocks
+        ) => {
+            connector.onCodeInsertToCursorPosition(
+                tabId,
+                messageId,
+                code,
+                type,
+                referenceTrackerInfo,
+                eventId,
+                codeBlockIndex,
+                totalCodeBlocks,
+                messageUserIntentMap.get(messageId) ?? undefined
+            )
+        },
         onCopyCodeToClipboard: (
             tabId,
             messageId,
@@ -458,7 +484,7 @@ export const createMynahUI = (ideApi: any, featureDevInitEnabled: boolean, codeT
                 eventId,
                 codeBlockIndex,
                 totalCodeBlocks,
-                userIntent
+                messageUserIntentMap.get(messageId) ?? undefined
             )
             mynahUI.notify({
                 type: NotificationType.SUCCESS,

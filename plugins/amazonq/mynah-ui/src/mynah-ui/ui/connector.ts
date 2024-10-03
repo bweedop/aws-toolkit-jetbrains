@@ -30,6 +30,12 @@ export interface ChatPayload {
     chatCommand?: string
 }
 
+
+export interface TracedChatItem extends ChatItem {
+    traceId?: string
+    userIntent?: string
+}
+
 export interface ConnectorProps {
     sendMessageToExtension: (message: ExtensionMessage) => void
     onMessageReceived?: (tabID: string, messageData: any, needToShowAPIDocsTab: boolean) => void
